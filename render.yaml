@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: umaralertbot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app.main:main --workers 1 --threads 1 --timeout 60
