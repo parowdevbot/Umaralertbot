@@ -1,66 +1,94 @@
 import asyncio
+import logging
+import psutil
 from datetime import datetime, time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
+from config import Config
+from utils.whale_detector import WhaleDetector
+from utils.liquidation_scraper import LiquidationScraper
+from utils.usdt_flow import USDTFlowTracker
+from utils.nasdaq_monitor import NasdaqMonitor
+from utils.storage import AlertStorage
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(Config.LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
 class CryptoAlertBot:
     def __init__(self):
-        self._init_commands()
-        self._init_monitoring()
-    
-    def _init_commands(self):
-        """Register only implemented commands"""
-        self.command_handlers = {
-            'summary': self.summary,
-            'usdtflow': self.usdtflow,
-            'smartlist': self.smartlist,
-            'log': self.show_log,
-            'status': self.status,
-            'silent': self.set_silent
+        self.storage = AlertStorage()
+        self.detectors = {
+            'whale': WhaleDetector(),
+            'liquidation': LiquidationScraper(),
+            'usdt_flow': USDTFlowTracker(),
+            'nasdaq': NasdaqMonitor()
         }
-    
-    def _init_monitoring(self):
-        """Initialize monitoring modules"""
-        self.whale_detector = WhaleDetector()
-        self.liquidation_scraper = LiquidationScraper()
-        self.usdt_tracker = USDTFlowTracker()
-        self.nasdaq_monitor = NasdaqMonitor()
         
-        # Schedule tasks
-        self.scheduler.add_job(
-            self._run_checks,
-            'interval',
-            minutes=30,
-            next_run_time=datetime.now()
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start command"""
+        await update.message.reply_text(
+            "🚀 Crypto Alert Bot Active!\n"
+            "Monitoring:\n"
+            "- Whale transfers (>$5M)\n"
+            "- Liquidations (>$50M)\n"
+            "- USDT flows (>$40M)\n"
+            "- NASDAQ moves (>5%)\n\n"
+            "Commands: /summary /usdtflow /smartlist"
         )
-    
-    async def _run_checks(self):
-        """Orchestrate all monitoring"""
-        if self._should_skip():
-            return
-            
-        results = await asyncio.gather(
-            self.whale_detector.check_whales(),
-            self.liquidation_scraper.get_clusters(),
-            self.usdt_tracker.get_net_flow(),
-            self.nasdaq_monitor.check_movers(),
-            return_exceptions=True
-        )
-        self._process_results(results)
-    
-    # Command implementations
+
     async def summary(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Show top 3 alerts"""
-        alerts = self.alert_queue.get_top(3)
-        await update.message.reply_text(
-            "🔝 Top 3 Alerts:\n" + 
-            "\n".join(f"{i+1}. {alert}" for i, alert in enumerate(alerts))
+        alerts = self.storage.get_recent_alerts(3)
+        response = "🔝 Top 3 Alerts:\n" + "\n".join(
+            f"{i+1}. {a['type']} - {a['message']}" 
+            for i, a in enumerate(alerts)
         )
+        await update.message.reply_text(response)
+
+    async def monitor_markets(self):
+        """Main monitoring loop"""
+        while True:
+            try:
+                if self._should_skip():
+                    continue
+                    
+                alerts = await self._check_all_sources()
+                await self._process_alerts(alerts)
+                await asyncio.sleep(300)  # 5 minutes
+                
+            except Exception as e:
+                logger.error(f"Monitoring error: {e}")
+                await asyncio.sleep(600)  # Wait longer on errors
+
+async def main():
+    """Entry point"""
+    bot = CryptoAlertBot()
+    application = Application.builder().token(Config.BOT_TOKEN).build()
     
-    async def smartlist(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show smart wallets"""
-        wallets = self.whale_detector.get_smart_wallets()
-        await update.message.reply_text(
-            "🏆 Smart Whales:\n" +
-            "\n".join(f"{w['address']} ({w['success_rate']}%)" for w in wallets)
-        )
+    # Register commands
+    application.add_handler(CommandHandler("start", bot.start))
+    application.add_handler(CommandHandler("summary", bot.summary))
+    
+    # Start tasks
+    asyncio.create_task(bot.monitor_markets())
+    
+    # Start bot
+    await application.run_webhook(
+        listen="0.0.0.0",
+        port=Config.PORT,
+        url_path=Config.BOT_TOKEN,
+        webhook_url=f"{Config.WEBHOOK_URL}/{Config.BOT_TOKEN}",
+        drop_pending_updates=True
+    )
+
+if __name__ == "__main__":
+    asyncio.run(main())
