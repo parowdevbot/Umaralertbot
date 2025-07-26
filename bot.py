@@ -1,99 +1,118 @@
 import os
 import logging
+import requests
+from datetime import datetime
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters
-)
+from telegram.ext import Application, CommandHandler, ContextTypes
 from config import Config
 from utils.logger import setup_logger
-from utils.rate_limiter import RateLimiter
 from utils.storage import Storage
 
-# Initialize core components
+# Initialize
 setup_logger()
 logger = logging.getLogger(__name__)
 storage = Storage()
-rate_limiter = RateLimiter()
 
 class CryptoAlertBot:
     def __init__(self):
-        # Initialize application with job queue support
         self.application = Application.builder().token(Config.BOT_TOKEN).build()
         
-        # Register command handlers (MUST match @BotFather commands exactly)
-        self.application.add_handler(CommandHandler("start", self.start))
-        self.application.add_handler(CommandHandler("help", self.help))
-        self.application.add_handler(CommandHandler("status", self.status))
+        # Command setup
+        commands = {
+            'start': 'Start the bot',
+            'alerts': 'Configure alert thresholds',
+            'portfolio': 'Track your portfolio',
+            'silent': 'Toggle alerts temporarily'
+        }
+        self._setup_commands(commands)
         
-        # Setup job queue for alerts
-        if self.application.job_queue:
-            self.application.job_queue.run_repeating(
-                self.monitor_tasks,
-                interval=300.0,
-                first=10.0
-            )
+        # Monitoring setup
+        self.application.job_queue.run_repeating(
+            self._check_markets,
+            interval=300.0,
+            first=10.0
+        )
 
-    # ===== COMMAND HANDLERS =====
+    def _setup_commands(self, commands):
+        for cmd, desc in commands.items():
+            self.application.add_handler(CommandHandler(cmd, getattr(self, cmd)))
+
+    # Command Handlers
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /start command"""
+        """Initiate bot and show welcome"""
+        storage.add_user(update.effective_user.id)
         await update.message.reply_text(
-            "🚀 Crypto Alert Bot Activated!\n"
-            "Type /help for available commands"
+            "🚨 Crypto Alert Bot Ready\n"
+            "Monitoring:\n"
+            "- Whale transactions (>$5M)\n"
+            "- Liquidations (>$50M)\n"
+            "- USDT flows (>$40M)\n"
+            "- NASDAQ moves (>5%)\n\n"
+            "Type /alerts to configure"
         )
 
-    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /help command"""
+    async def alerts(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Configure alert thresholds"""
         await update.message.reply_text(
-            "📝 Available Commands:\n"
-            "/start - Start the bot\n"
-            "/help - Show this message\n"
-            "/status - Check bot status\n"
-            "\nAlerts will be sent automatically"
+            "🔔 Alert Settings:\n"
+            "/whale [amount] - Set whale threshold\n"
+            "/liq [amount] - Set liquidation threshold\n"
+            "/flow [amount] - Set USDT flow threshold"
         )
 
-    async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handler for /status command"""
-        await update.message.reply_text(
-            "✅ Bot is fully operational!\n"
-            f"🔗 Webhook: {Config.WEBHOOK_URL}\n"
-            f"⏱ Last check: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+    # Market Monitoring Core
+    async def _check_markets(self, context: ContextTypes.DEFAULT_TYPE):
+        alerts = []
+        
+        # 1. Whale Transactions
+        whales = self._get_whale_transfers()
+        alerts.extend(f"🐋 ${x['amount']/1e6}M {x['symbol']}" for x in whales)
+        
+        # 2. Liquidations
+        liquidations = self._get_liquidations()
+        alerts.extend(f"💥 ${x/1e6}M liquidation" for x in liquidations)
+        
+        # 3. USDT Flows
+        flows = self._get_usdt_flows()
+        alerts.append(f"💵 USDT Net Flow: ${flows/1e6}M")
+        
+        # 4. NASDAQ Moves
+        for symbol in ['TSLA', 'NVDA']:
+            move = self._get_stock_move(symbol)
+            alerts.append(f"📈 {symbol} {move:.1f}%")
+        
+        # Send alerts
+        for user_id in storage.get_users():
+            for alert in alerts:
+                await context.bot.send_message(chat_id=user_id, text=alert)
 
-    # ===== BACKGROUND TASKS =====
-    async def monitor_tasks(self, context: ContextTypes.DEFAULT_TYPE):
-        """Scheduled task that runs every 5 minutes"""
-        try:
-            # Your alert logic here
-            logger.info("Running scheduled checks...")
-            
-            # Example alert (replace with your logic)
-            if some_alert_condition:
-                await context.bot.send_message(
-                    chat_id=update.effective_chat.id,
-                    text="🚨 New alert detected!"
-                )
-        except Exception as e:
-            logger.error(f"Alert error: {e}")
+    # API Implementations (replace with your actual sources)
+    def _get_whale_transfers(self):
+        """Return whale transactions > threshold"""
+        # Example: return [{'symbol': 'BTC', 'amount': 6000000}]
+        pass
 
-    # ===== START METHOD =====
+    def _get_liquidations(self):
+        """Return liquidations > threshold"""
+        # Example: return [55000000]
+        pass
+
+    def _get_usdt_flows(self):
+        """Return net USDT flow"""
+        # Example: return 42000000
+        pass
+
+    def _get_stock_move(self, symbol):
+        """Return percentage move for stock"""
+        # Example: return 5.3
+        pass
+
     def start_bot(self):
-        """Start the bot in webhook mode"""
-        try:
-            self.application.run_webhook(
-                listen="0.0.0.0",
-                port=Config.PORT,
-                url_path=Config.BOT_TOKEN,
-                webhook_url=f"{Config.WEBHOOK_URL}/{Config.BOT_TOKEN}",
-                drop_pending_updates=True
-            )
-        except Exception as e:
-            logger.error(f"Webhook failed: {e}, switching to polling")
-            self.application.run_polling()
+        self.application.run_webhook(
+            listen="0.0.0.0",
+            port=Config.PORT,
+            webhook_url=f"{Config.WEBHOOK_URL}/{Config.BOT_TOKEN}"
+        )
 
 if __name__ == "__main__":
-    bot = CryptoAlertBot()
-    bot.start_bot()
+    CryptoAlertBot().start_bot()
