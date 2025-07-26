@@ -1,6 +1,5 @@
 import os
 import logging
-from datetime import datetime
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -23,66 +22,76 @@ rate_limiter = RateLimiter()
 class CryptoAlertBot:
     def __init__(self):
         # Initialize application with job queue support
-        self.application = (
-            Application.builder()
-            .token(Config.BOT_TOKEN)
-            .concurrent_updates(True)
-            .build()
-        )
+        self.application = Application.builder().token(Config.BOT_TOKEN).build()
         
-        self.silent_mode = False
-        
-        # Command handlers
+        # Register command handlers (MUST match @BotFather commands exactly)
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("help", self.help))
+        self.application.add_handler(CommandHandler("status", self.status))
         
-        # Setup job queue
+        # Setup job queue for alerts
         if self.application.job_queue:
             self.application.job_queue.run_repeating(
                 self.monitor_tasks,
                 interval=300.0,
                 first=10.0
             )
-    
+
+    # ===== COMMAND HANDLERS =====
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Send welcome message with debug info"""
-        debug_info = f"""
-        Bot Status Report:
-        • Webhook: {Config.WEBHOOK_URL}
-        • Token: {Config.BOT_TOKEN[:5]}...{Config.BOT_TOKEN[-5:]}
-        • Jobs Running: {len(self.application.job_queue.jobs()) if self.application.job_queue else 0}
-        • Server Time: {datetime.now()}
-        """
-        await update.message.reply_text(f"🚀 Bot is operational!\n{debug_info}")
-    
+        """Handler for /start command"""
+        await update.message.reply_text(
+            "🚀 Crypto Alert Bot Activated!\n"
+            "Type /help for available commands"
+        )
+
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Send help message"""
-        await update.message.reply_text("ℹ️ Available commands:\n/start - Check bot status\n/help - Show this message")
-    
+        """Handler for /help command"""
+        await update.message.reply_text(
+            "📝 Available Commands:\n"
+            "/start - Start the bot\n"
+            "/help - Show this message\n"
+            "/status - Check bot status\n"
+            "\nAlerts will be sent automatically"
+        )
+
+    async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handler for /status command"""
+        await update.message.reply_text(
+            "✅ Bot is fully operational!\n"
+            f"🔗 Webhook: {Config.WEBHOOK_URL}\n"
+            f"⏱ Last check: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+
+    # ===== BACKGROUND TASKS =====
     async def monitor_tasks(self, context: ContextTypes.DEFAULT_TYPE):
-        """Background task that runs periodically"""
-        logger.info("✅ Performing scheduled monitoring...")
+        """Scheduled task that runs every 5 minutes"""
         try:
-            # Your monitoring logic here
-            pass
+            # Your alert logic here
+            logger.info("Running scheduled checks...")
+            
+            # Example alert (replace with your logic)
+            if some_alert_condition:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="🚨 New alert detected!"
+                )
         except Exception as e:
-            logger.error(f"Monitoring error: {e}")
-    
+            logger.error(f"Alert error: {e}")
+
+    # ===== START METHOD =====
     def start_bot(self):
-        """Start the bot with proper webhook configuration"""
-        webhook_url = f"{Config.WEBHOOK_URL}/{Config.BOT_TOKEN}"
-        logger.info(f"🔗 Setting webhook to: {webhook_url}")
-        
+        """Start the bot in webhook mode"""
         try:
             self.application.run_webhook(
                 listen="0.0.0.0",
                 port=Config.PORT,
                 url_path=Config.BOT_TOKEN,
-                webhook_url=webhook_url,
+                webhook_url=f"{Config.WEBHOOK_URL}/{Config.BOT_TOKEN}",
                 drop_pending_updates=True
             )
         except Exception as e:
-            logger.error(f"Webhook failed: {e}\n🔄 Falling back to polling...")
+            logger.error(f"Webhook failed: {e}, switching to polling")
             self.application.run_polling()
 
 if __name__ == "__main__":
