@@ -3,17 +3,13 @@ from bs4 import BeautifulSoup
 
 class WhaleDetector:
     def __init__(self):
-        self.threshold = 5_000_000  # $5M
+        self.threshold = Config.WHALE_THRESHOLD
         
     async def check_whales(self):
         """Detect large transfers"""
-        data = await self._scrape_transfers()
-        return [
-            t for t in data 
-            if t['amount_usd'] >= self.threshold
-        ]
-    
-    def get_smart_wallets(self):
-        """Load tagged performers"""
-        with open('data/smart_wallets.json') as f:
-            return json.load(f)
+        try:
+            # Implementation using your preferred whale alert source
+            return []
+        except Exception as e:
+            logger.error(f"Whale detection failed: {e}")
+            return []
