@@ -12,7 +12,7 @@ from telegram.ext import (
 )
 from config import Config
 from utils.logger import setup_logger
-from utils.Rate_Limiter import RateLimiter
+from utils.rate_limiter import RateLimiter
 from utils.storage import Storage
 import requests
 from bs4 import BeautifulSoup
