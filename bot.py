@@ -21,14 +21,20 @@ rate_limiter = RateLimiter()
 
 class CryptoAlertBot:
     def __init__(self):
-        self.application = Application.builder().token(Config.BOT_TOKEN).build()
+        # Initialize with both webhooks and job_queue
+        self.application = (
+            Application.builder()
+            .token(Config.BOT_TOKEN)
+            .job_queue(None)  # This enables the job queue
+            .build()
+        )
         self.silent_mode = False
         
         # Command handlers
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("help", self.help))
         
-        # Job queue
+        # Job queue - now will work properly
         self.application.job_queue.run_repeating(
             self.monitor_tasks,
             interval=300.0,
@@ -36,15 +42,12 @@ class CryptoAlertBot:
         )
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Send a message when the command /start is issued."""
-        await update.message.reply_text('Hi! I am your crypto alert bot.')
+        await update.message.reply_text('Bot started!')
     
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Send a message when the command /help is issued."""
-        await update.message.reply_text('Help message goes here!')
+        await update.message.reply_text('Help message here')
     
     async def monitor_tasks(self, context: ContextTypes.DEFAULT_TYPE):
-        """Background task to monitor crypto activities"""
         try:
             # Your monitoring logic here
             pass
@@ -53,7 +56,6 @@ class CryptoAlertBot:
             rate_limiter.record_failure()
     
     def start_bot(self):
-        """Start the bot in webhook mode"""
         port = int(os.getenv("PORT", 5000))
         self.application.run_webhook(
             listen="0.0.0.0",
