@@ -21,39 +21,42 @@ rate_limiter = RateLimiter()
 
 class CryptoAlertBot:
     def __init__(self):
-        # Initialize with both webhooks and job_queue
+        # Initialize application with job queue
         self.application = (
             Application.builder()
             .token(Config.BOT_TOKEN)
-            .job_queue(None)  # This enables the job queue
+            .concurrent_updates(True)
             .build()
         )
+        
         self.silent_mode = False
         
         # Command handlers
         self.application.add_handler(CommandHandler("start", self.start))
         self.application.add_handler(CommandHandler("help", self.help))
         
-        # Job queue - now will work properly
-        self.application.job_queue.run_repeating(
-            self.monitor_tasks,
-            interval=300.0,
-            first=10.0
-        )
+        # Job queue setup
+        if self.application.job_queue is None:
+            logger.error("Job queue is not available!")
+        else:
+            self.application.job_queue.run_repeating(
+                self.monitor_tasks,
+                interval=300.0,
+                first=10.0
+            )
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text('Bot started!')
+        await update.message.reply_text('Bot is running!')
     
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        await update.message.reply_text('Help message here')
+        await update.message.reply_text('Help information here')
     
     async def monitor_tasks(self, context: ContextTypes.DEFAULT_TYPE):
         try:
             # Your monitoring logic here
-            pass
+            logger.info("Running scheduled task...")
         except Exception as e:
-            logger.error(f"Monitoring error: {e}")
-            rate_limiter.record_failure()
+            logger.error(f"Task error: {e}")
     
     def start_bot(self):
         port = int(os.getenv("PORT", 5000))
