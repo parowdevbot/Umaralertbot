@@ -1,6 +1,9 @@
 class LiquidationScraper:
     async def get_clusters(self):
-        """Get >$50M liquidation clusters"""
-        url = "https://www.coinglass.com/LiquidationData"
-        # Implementation using BeautifulSoup
-        return clusters
+        """Get liquidation clusters from CoinGlass"""
+        try:
+            # Your implementation here
+            return []
+        except Exception as e:
+            logger.error(f"Liquidation check failed: {e}")
+            return []
