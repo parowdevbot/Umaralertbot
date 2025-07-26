@@ -1,22 +1,10 @@
 import os
 import logging
-import time
-import psutil
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters
-)
+from telegram.ext import Application, CommandHandler, ContextTypes
 from config import Config
 from utils.logger import setup_logger
 from utils.rate_limiter import RateLimiter
 from utils.storage import Storage
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime
 
 # Initialize core components
 setup_logger()
@@ -24,87 +12,47 @@ logger = logging.getLogger(__name__)
 storage = Storage()
 rate_limiter = RateLimiter()
 
-class WhaleAlert:
-    def __init__(self, bot, storage):
-        self.bot = bot
-        self.storage = storage
-    
-    def process(self, transfer):
-        """Process whale transfer alerts"""
-        # Your implementation here
-        pass
-
-class LiquidationMonitor:
-    def __init__(self, bot, storage):
-        self.bot = bot
-        self.storage = storage
-    
-    def process(self, liquidation):
-        """Process liquidation alerts"""
-        pass
-
-class USDTFlow:
-    def __init__(self, bot, storage):
-        self.bot = bot
-        self.storage = storage
-    
-    def process(self, flows, net_flow):
-        """Process USDT flow alerts"""
-        pass
-
-class NASDAQMonitor:
-    def __init__(self, bot, storage):
-        self.bot = bot
-        self.storage = storage
-    
-    def process(self, symbol, move):
-        """Process stock movement alerts"""
-        pass
-
 class CryptoAlertBot:
     def __init__(self):
         self.application = Application.builder().token(Config.BOT_TOKEN).build()
         self.silent_mode = False
-        self.silent_until = 0
         
-        # Initialize modules with proper arguments
-        self.whale_alert = WhaleAlert(self.application.bot, storage)
-        self.liquidation = LiquidationMonitor(self.application.bot, storage)
-        self.usdt_flow = USDTFlow(self.application.bot, storage)
-        self.nasdaq = NASDAQMonitor(self.application.bot, storage)
-        
-        # Command handlers
+        # Register commands
         self.application.add_handler(CommandHandler("start", self.start))
-        self.application.add_handler(CommandHandler("summary", self.summary))
+        self.application.add_handler(CommandHandler("help", self.help))
         
-        # Job queue
-        self.application.job_queue.run_repeating(self.run_checks, interval=600)
+        # Setup job queue
+        self.application.job_queue.run_repeating(
+            self.monitor_tasks,
+            interval=300.0,
+            first=10.0
+        )
     
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Send welcome message"""
-        await update.message.reply_text("Hi! I'm your crypto alert bot.")
+        await update.message.reply_text("Bot started!")
     
-    async def summary(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Send summary"""
-        await update.message.reply_text("Summary coming soon!")
+    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text("Help message here")
     
-    def run_checks(self, context: ContextTypes.DEFAULT_TYPE):
-        """Background monitoring"""
+    async def monitor_tasks(self, context: ContextTypes.DEFAULT_TYPE):
         try:
             # Your monitoring logic here
             pass
         except Exception as e:
-            logger.error(f"Error in run_checks: {e}")
+            logger.error(f"Monitoring error: {e}")
             rate_limiter.record_failure()
     
     def start_bot(self):
-        """Start webhook"""
-        port = int(os.getenv("PORT", 5000))
+        """Start the bot in webhook mode for Render"""
+        if not Config.WEBHOOK_URL:
+            raise ValueError("WEBHOOK_URL not set in config")
+            
         self.application.run_webhook(
             listen="0.0.0.0",
-            port=port,
+            port=int(os.getenv("PORT", 5000)),
             url_path=Config.BOT_TOKEN,
-            webhook_url=f"{Config.WEBHOOK_URL}/{Config.BOT_TOKEN}"
+            webhook_url=f"{Config.WEBHOOK_URL}/{Config.BOT_TOKEN}",
+            drop_pending_updates=True
         )
 
 if __name__ == "__main__":
